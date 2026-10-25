@@ -1,0 +1,28 @@
+{
+  "name": "pi-cli-uxplus",
+  "version": "0.1.1",
+  "description": "Three-column fullscreen workspace for Pi: files, project info, chat, sessions and subagent monitoring.",
+  "type": "module",
+  "keywords": ["pi-package", "pi", "workspace", "terminal", "tui"],
+  "license": "MIT",
+  "author": "Mario de Moraes (https://github.com/mariombn)",
+  "repository": { "type": "git", "url": "git+https://github.com/mariombn/pi-cli-uxplus.git" },
+  "homepage": "https://github.com/mariombn/pi-cli-uxplus#readme",
+  "bugs": { "url": "https://github.com/mariombn/pi-cli-uxplus/issues" },
+  "engines": { "node": ">=22.19" },
+  "pi": { "extensions": ["./index.ts"] },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "1.4.0",
+    "@earendil-works/pi-tui": "1.4.0",
+    "jiti": "2.7.0"
+  },
+  "scripts": {
+    "test": "node tests/smoke.mjs",
+    "test:terminal": "python3 tests/terminal_smoke.py"
+  },
+  "files": ["index.ts", "files.ts", "layout.ts", "dialogs.ts", "README.md", "LICENSE", "CHANGELOG.md"]
+}
