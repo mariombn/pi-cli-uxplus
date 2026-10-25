@@ -1,6 +1,6 @@
 {
   "name": "pi-cli-uxplus",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Three-column fullscreen workspace for Pi: files, project info, chat, sessions and subagent monitoring.",
   "type": "module",
   "keywords": ["pi-package", "pi", "workspace", "terminal", "tui"],
@@ -24,5 +24,5 @@
     "test": "node tests/smoke.mjs",
     "test:terminal": "python3 tests/terminal_smoke.py"
   },
-  "files": ["index.ts", "files.ts", "layout.ts", "dialogs.ts", "README.md", "LICENSE", "CHANGELOG.md"]
+  "files": ["appearance.ts", "index.ts", "files.ts", "layout.ts", "dialogs.ts", "README.md", "LICENSE", "CHANGELOG.md"]
 }

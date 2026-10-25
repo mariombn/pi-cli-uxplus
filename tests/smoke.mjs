@@ -19,12 +19,83 @@ if (!modules) {
 const load = path => import(pathToFileURL(join(modules, path)).href);
 const { loadExtensions, createExtensionRuntime } = await load('@earendil-works/pi-coding-agent/dist/core/extensions/loader.js');
 const { createEventBus } = await load('@earendil-works/pi-coding-agent/dist/core/event-bus.js');
-const { VStack, ScrollView, visibleWidth } = await load('@earendil-works/pi-tui/dist/index.js');
+const { Container, VStack, ScrollView, visibleWidth } = await load('@earendil-works/pi-tui/dist/index.js');
 const { VIEWPORT_TUI } = await load('@earendil-works/pi-tui/dist/tui.js');
 const { renderLayoutFrame } = await load('@earendil-works/pi-tui/dist/layout.js');
 const { createJiti } = await load('jiti/lib/jiti.mjs');
 const jiti = createJiti(import.meta.url);
 const fsModel = await jiti.import(join(project, 'files.ts'));
+const { PromptFrame, WorkingStatusColor, installUserMessageBackground } = await jiti.import(join(project, 'layout.ts'));
+const { paintUserMessageBackground } = await jiti.import(join(project, 'appearance.ts'));
+const { CURSOR_MARKER } = await load('@earendil-works/pi-tui/dist/index.js');
+let mouseEvent;
+const nativeBorder = text => `\x1b[34m${text}\x1b[0m`;
+const nativeEditor = {
+  borderColor: nativeBorder,
+  invalidate() {},
+  render(width) { return [this.borderColor('─'.repeat(width)), CURSOR_MARKER + '汉字🚀', this.borderColor('─'.repeat(width)), 'completion']; },
+  handleMouse(event) { mouseEvent = event; return { handled: true }; },
+};
+const promptFrame = new PromptFrame(nativeEditor, text => `\x1b[31m${text}\x1b[0m`);
+const promptLines = promptFrame.render(24);
+assert(promptLines[0].includes('╭') && promptLines[2].includes('╰'));
+assert(promptLines[1].includes(CURSOR_MARKER), 'preserve IME marker');
+assert(!promptLines.join('').includes('\x1b[34m'), 'no native blue borders');
+assert(promptLines.every(line => visibleWidth(line) === 24));
+assert(!promptLines[3].includes('│'), 'autocomplete remains outside frame');
+assert.equal(nativeEditor.borderColor, nativeBorder, 'restore native editor styling after rendering');
+promptFrame.handleMouse({ x: 5, y: 1, width: 24, height: 4 });
+assert.equal(mouseEvent.x, 4);
+assert.equal(mouseEvent.width, 22);
+const red = text => `\x1b[31m${text}\x1b[0m`;
+const working = { kind: 'working', invalidate() {}, render: () => ['\x1b[34m⠋ Working\x1b[0m'] };
+const coloredWorking = new WorkingStatusColor(working, red);
+assert(coloredWorking.render(30)[0].includes('\x1b[31m⠋ Working'));
+working.kind = 'retry';
+assert.equal(coloredWorking.render(30)[0], working.render()[0], 'preserve retry colors');
+const embeddedEditor = { ...nativeEditor, embedWorkingStatus: true, workingStatusIndicator: { kind: 'working' },
+  render(width) { return ['─ \x1b[34m⠋ Working\x1b[0m ' + '─'.repeat(width - 12), 'prompt', this.borderColor('─'.repeat(width))]; } };
+const embeddedLines = new PromptFrame(embeddedEditor, red).render(30);
+assert(embeddedLines[0].includes('Working'));
+assert(!embeddedLines[0].includes('\x1b[34m'), 'embedded spinner uses workspace color');
+assert.equal(embeddedEditor.borderColor, nativeBorder);
+
+// Exercise real native user-message Markdown, including messages added later.
+const { initTheme, UserMessageComponent } = await load('@earendil-works/pi-coding-agent/dist/index.js');
+initTheme('dark', false);
+const chatDocument = new Container();
+const userMessage = new UserMessageComponent('My message');
+const assistantMessage = { invalidate() {}, render: () => ['assistant unchanged'] };
+chatDocument.addChild(userMessage);
+chatDocument.addChild(assistantMessage);
+const userScroll = new ScrollView(chatDocument);
+const beforeBackground = chatDocument.render(40).join('\n');
+const restoreBackground = installUserMessageBackground(userScroll, text => `\x1b[48;2;53;23;28m${text}\x1b[49m`);
+const tinted = chatDocument.render(40).join('\n');
+assert(tinted.includes('\x1b[48;2;53;23;28m'));
+assert(tinted.includes('assistant unchanged'));
+const laterUser = new UserMessageComponent('Later message');
+chatDocument.addChild(laterUser);
+assert(chatDocument.render(40).join('\n').includes('\x1b[48;2;53;23;28m'));
+assert(laterUser.render(40).join('\n').includes('\x1b[48;2;53;23;28m'), 'new user messages receive the same background');
+restoreBackground();
+chatDocument.removeChild(laterUser);
+assert.equal(chatDocument.render(40).join('\n'), beforeBackground, 'restore native backgrounds on disable');
+const { theme: realTheme } = await load('@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js');
+assert.throws(() => realTheme.style('test', { bg: '#35171c' }), /Unknown theme color/, 'raw hex is not a theme token');
+for (const name of ['dark', 'light']) {
+  initTheme(name, false);
+  const expected = paintUserMessageBackground(realTheme, 'production color');
+  assert(expected.includes('production color'));
+  const restore = installUserMessageBackground(userScroll, text => paintUserMessageBackground(realTheme, text));
+  assert.doesNotThrow(() => chatDocument.render(40), `${name}: actual production painter with native Markdown`);
+  restore();
+}
+initTheme('dark', false);
+const beforeFailure = chatDocument.render(40).join('\n');
+const restoreFailure = installUserMessageBackground(userScroll, () => { throw new Error('bad color'); });
+assert.equal(chatDocument.render(40).join('\n'), beforeFailure, 'bad cosmetic color falls back without crashing');
+restoreFailure();
 
 const root = await mkdtemp(join(tmpdir(), 'pi-workspace-test-'));
 const outside = await mkdtemp(join(tmpdir(), 'pi-workspace-outside-'));
@@ -107,6 +178,20 @@ try {
     assert(frame.lines.every(line => visibleWidth(line) <= width));
   }
   tui.terminal.columns = 160;
+  // Side cards must consume their allocated rows with no gaps between borders.
+  for (const height of [24, 40, 60, 61]) {
+    tui.terminal.rows = height;
+    const f = render();
+    for (const side of [f.root.children[0], f.root.children[2]]) {
+      const [top, bottom] = side.children;
+      assert.equal(top.rect.y + top.rect.height, bottom.rect.y);
+      assert.equal(top.lines.length, top.rect.height, 'top card must render all allocated rows');
+      assert.equal(bottom.lines.length, bottom.rect.height, 'bottom card must render all allocated rows');
+      assert.equal(bottom.rect.y + bottom.rect.height, height);
+      assert(top.rect.height >= bottom.rect.height);
+    }
+  }
+  tui.terminal.rows = 40;
   const frame = render();
   assert(frame.lines.some(line => line.includes('ARQUIVOS')));
   assert(frame.lines.some(line => line.includes('SESSÕES')));

@@ -13,7 +13,7 @@ pi install git:github.com/mariombn/pi-cli-uxplus
 Reinicie o Pi ou execute `/reload`. Para fixar a versão:
 
 ```bash
-pi install git:github.com/mariombn/pi-cli-uxplus@v0.1.1
+pi install git:github.com/mariombn/pi-cli-uxplus@v0.1.2
 ```
 
 Use `pi --tui-mode fullscreen`.

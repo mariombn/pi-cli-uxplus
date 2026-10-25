@@ -2,8 +2,9 @@ import { SessionManager, copyToClipboard, type ExtensionAPI, type ExtensionConte
 import { VStack, matchesKey, isKeyRelease, isKeyRepeat, truncateToWidth, visibleWidth, type Component, type TUI, type OverlayHandle } from '@earendil-works/pi-tui';
 import { realpath, lstat, readdir, unlink } from 'node:fs/promises';
 import { relative, dirname, basename, resolve } from 'node:path';
-import { inspectLayout, installLayout } from './layout.ts';
+import { inspectLayout, installLayout, installUserMessageBackground } from './layout.ts';
 import { editName } from './dialogs.ts';
+import { WORKSPACE_COLOR, paintUserMessageBackground } from './appearance.ts';
 import { tree, preview, renameItem, deleteItem, safePath, sanitize, type FileItem } from './files.ts';
 
 type Focus = 'files' | 'sessions' | 'agents';
@@ -25,6 +26,7 @@ export default function (pi: ExtensionAPI) {
   let promptTarget: Component | null = null;
   let narrowOverlay: OverlayHandle | undefined;
   let restoreLayout: (() => void) | undefined;
+  let restoreUserBackground: (() => void) | undefined;
   let removeInput: (() => void) | undefined;
   let timer: ReturnType<typeof setInterval> | undefined;
   let footer: Component | undefined;
@@ -52,14 +54,15 @@ export default function (pi: ExtensionAPI) {
   const runList = () => [...runs.values()].sort((a, b) => Number(!!a.ended) - Number(!!b.ended) || b.started - a.started);
   const panelHeight = (kind: 'files' | 'project' | 'sessions' | 'agents') => {
     const height = tui?.terminal.rows || 24;
-    const topLeft = Math.max(4, Math.floor(height * 0.50));
-    const topRight = Math.max(4, Math.floor(height * 0.50));
-    return kind === 'files' ? topLeft : kind === 'project' ? height - topLeft : kind === 'sessions' ? topRight : height - topRight;
+    // Reserve roughly one third for the lower panels (at least 12 rows when
+    // space permits). The upper panels use every remaining row.
+    const bottom = Math.min(Math.floor(height / 2), Math.max(12, Math.floor(height / 3)));
+    return kind === 'files' || kind === 'sessions' ? height - bottom : bottom;
   };
   function box(title: string, lines: string[], width: number, height: number, active = false) {
     if (width < 3 || height < 2) return [];
     const inner = width - 2;
-    const border = (s: string) => theme.fg(active ? 'accent' : 'border', s);
+    const border = (s: string) => theme.fg(WORKSPACE_COLOR, active ? theme.bold(s) : s);
     const row = (s: string) => {
       const text = truncateToWidth(s, inner);
       return border('│') + text + ' '.repeat(Math.max(0, inner - visibleWidth(text))) + border('│');
@@ -377,6 +380,7 @@ export default function (pi: ExtensionAPI) {
     removeInput?.(); removeInput = undefined;
     for (const off of subscriptions.splice(0)) off();
     if (focus) release();
+    restoreUserBackground?.(); restoreUserBackground = undefined;
     restoreLayout?.(); restoreLayout = undefined;
     enabled = false;
     tui = undefined; adapter = undefined; footer = undefined;
@@ -395,7 +399,9 @@ export default function (pi: ExtensionAPI) {
       tui = ui; theme = colors;
       if (!enabled) {
         try {
-          adapter = inspectLayout(ui, () => leftVisible);
+          adapter = inspectLayout(ui, () => leftVisible, text => colors.fg(WORKSPACE_COLOR, focus ? text : colors.bold(text)));
+          restoreUserBackground = installUserMessageBackground(adapter.transcript,
+            text => paintUserMessageBackground(colors, text));
           footer = adapter.footer;
           const originalCenter = adapter.center;
           // Keep layout nodes intact when there is no preview; swap only the central pane.
@@ -405,8 +411,10 @@ export default function (pi: ExtensionAPI) {
           ]);
           adapter.center = center;
           restoreLayout = installLayout(adapter,
-            new VStack([{ component: panels.files, basis: 0, grow: 1 }, { component: project, basis: 0, grow: 1 }]),
-            new VStack([{ component: panels.sessions, basis: 0, grow: 1 }, { component: panels.agents, basis: 0, grow: 1 }]),
+            // Use each card's exact intrinsic height. Growing zero-basis entries
+            // allocates different heights than render() uses, leaving blank gaps.
+            new VStack([{ component: panels.files, basis: 'auto', grow: 0, shrink: 0 }, { component: project, basis: 'auto', grow: 0, shrink: 0 }]),
+            new VStack([{ component: panels.sessions, basis: 'auto', grow: 0, shrink: 0 }, { component: panels.agents, basis: 'auto', grow: 0, shrink: 0 }]),
             () => leftVisible, () => rightVisible);
           enabled = true;
           promptTarget = ui.getFocusedComponent();

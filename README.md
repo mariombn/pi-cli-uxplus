@@ -26,7 +26,7 @@ pi install git:github.com/mariombn/pi-cli-uxplus
 Then restart Pi, or run `/reload`. For a pinned, reproducible version:
 
 ```bash
-pi install git:github.com/mariombn/pi-cli-uxplus@v0.1.1
+pi install git:github.com/mariombn/pi-cli-uxplus@v0.1.2
 ```
 
 Run in fullscreen mode:
@@ -49,6 +49,10 @@ Update an unpinned installation with `pi update --extensions`. Pinned tags stay 
 - Project sessions sorted by latest activity, with rename and confirmed deletion.
 - Optional live event integration with `pi-subagents`; no subagents are started by this extension.
 - Responsive sidebars, explicit focus indicators, and a command to restore Pi's native layout.
+
+## Appearance
+
+`appearance.ts` defines `WORKSPACE_COLOR`, currently the active theme's `error` (red) token. Panel borders, the prompt frame, and the native Working text/spinner share this color. Retry/compaction status colors stay native. `USER_MESSAGE_BACKGROUND` in the same file defines muted red backgrounds for dark/light themes, applied only to user messages in the chat. Assistant and tool messages retain their native backgrounds. Change these constants and run `/reload` to experiment. Disabling the workspace restores native user-message backgrounds.
 
 ## Keyboard controls
 
@@ -127,7 +131,7 @@ Monitoring covers **events received since activation**. It does not restore runs
 - **100–139:** chat + left column; right panels open temporarily by shortcut.
 - **Below 100:** chat, with temporary panels via shortcuts.
 - Manually hidden columns are still accessible by shortcut.
-- Side columns currently use a 50/50 vertical split.
+- Upper panels use the remaining vertical space without gaps; lower panels reserve roughly one third of the height, with a 12-row minimum when space permits.
 
 ## Recovery and compatibility
 
@@ -139,7 +143,7 @@ Monitoring covers **events received since activation**. It does not restore runs
 
 This extension preserves the native transcript `ScrollView`, rather than replacing chat scrolling, search, or selection. It does not modify Pi's installed files, replace the editor, or start a second terminal renderer. RPC, JSON, and print modes do not mount the workspace.
 
-**Compatibility caveat:** layout mounting uses `ViewportTUI.setLayoutRoot()`, but obtaining the current root and its layout nodes requires a guarded **internal adapter in `layout.ts`**. Only Pi 1.4.0 has been tested. If the expected structure changes, the adapter refuses to mount. New Pi releases require retesting; do not combine this with another root-layout modifier.
+**Compatibility caveat:** layout mounting uses `ViewportTUI.setLayoutRoot()`, but obtaining the current root and its layout nodes, and overriding the native user-message Markdown background callback, requires a guarded **internal adapter in `layout.ts`**. Only Pi 1.4.0 has been tested. If the expected structure changes, the adapter refuses to mount. New Pi releases require retesting; do not combine this with another root-layout modifier.
 
 ## Development
 
